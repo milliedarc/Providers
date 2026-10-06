@@ -3,6 +3,7 @@
 namespace SocialiteProviders\Tests\Tidal;
 
 use GuzzleHttp\Psr7\Response;
+use RuntimeException;
 use SocialiteProviders\Tests\TestCase;
 use SocialiteProviders\Tidal\Provider;
 
@@ -71,5 +72,48 @@ class TidalProviderTest extends TestCase
         $user = $this->makeProvider($request, $responses)->stateless()->user();
 
         $this->assertSame('J. Doe', $user->getName());
+    }
+
+    public function test_user_read_scope_is_kept_when_scopes_are_replaced(): void
+    {
+        $request = $this->makeRequestWithSession();
+
+        $url = $this->makeProvider($request)->stateless()->setScopes(['playlists.read'])->redirect()->getTargetUrl();
+
+        $this->assertSame('user.read playlists.read', $this->queryParams($url)['scope']);
+    }
+
+    public function test_missing_user_data_throws(): void
+    {
+        $responses = [
+            new Response(200, [], (string) json_encode(['access_token' => 'access-token'])),
+            new Response(200, [], (string) json_encode(['errors' => [[
+                'status' => '403',
+                'code'   => 'FORBIDDEN',
+                'detail' => 'Missing scope user.read',
+            ]]])),
+        ];
+
+        $request = $this->makeRequestWithSession(['code' => 'code', 'state' => 'state']);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('TIDAL user response is missing data: 403 FORBIDDEN Missing scope user.read');
+
+        $this->makeProvider($request, $responses)->stateless()->user();
+    }
+
+    public function test_unexpected_user_response_throws(): void
+    {
+        $responses = [
+            new Response(200, [], (string) json_encode(['access_token' => 'access-token'])),
+            new Response(200, [], 'not json'),
+        ];
+
+        $request = $this->makeRequestWithSession(['code' => 'code', 'state' => 'state']);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('TIDAL user response is missing data.');
+
+        $this->makeProvider($request, $responses)->stateless()->user();
     }
 }

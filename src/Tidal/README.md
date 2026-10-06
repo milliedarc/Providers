@@ -67,7 +67,7 @@ return Socialite::driver('tidal')->redirect();
 
 ### Returned User fields
 
-The `user.read` scope is requested by default and is required for these fields.
+The `user.read` scope is required for these fields, so it is always requested, even if you replace the default scopes with `setScopes()`. Use `scopes()` to request additional ones.
 
 - `id`
 - `nickname` (TIDAL username, which is often the account email)

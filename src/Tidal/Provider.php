@@ -4,6 +4,7 @@ namespace SocialiteProviders\Tidal;
 
 use GuzzleHttp\RequestOptions;
 use Illuminate\Support\Arr;
+use RuntimeException;
 use SocialiteProviders\Manager\OAuth2\AbstractProvider;
 use SocialiteProviders\Manager\OAuth2\User;
 
@@ -24,6 +25,14 @@ class Provider extends AbstractProvider
 
     protected $usesPKCE = true;
 
+    /**
+     * Always include user.read, even when setScopes() replaces the defaults.
+     */
+    public function getScopes(): array
+    {
+        return array_values(array_unique(array_merge(['user.read'], parent::getScopes())));
+    }
+
     protected function getAuthUrl($state): string
     {
         return $this->buildAuthUrlFromBase('https://login.tidal.com/authorize', $state);
@@ -34,6 +43,9 @@ class Provider extends AbstractProvider
         return 'https://auth.tidal.com/v1/oauth2/token';
     }
 
+    /**
+     * @throws RuntimeException
+     */
     protected function getUserByToken($token)
     {
         $response = $this->getHttpClient()->get('https://openapi.tidal.com/v2/users/me', [
@@ -43,7 +55,20 @@ class Provider extends AbstractProvider
             ],
         ]);
 
-        return json_decode((string) $response->getBody(), true);
+        $user = json_decode((string) $response->getBody(), true);
+
+        if (! is_array($user) || Arr::get($user, 'data.id') === null) {
+            $error = is_array($user) ? Arr::get($user, 'errors.0', []) : [];
+            $detail = implode(' ', array_filter([
+                Arr::get($error, 'status'),
+                Arr::get($error, 'code'),
+                Arr::get($error, 'detail'),
+            ]));
+
+            throw new RuntimeException('TIDAL user response is missing data'.($detail !== '' ? ': '.$detail : '.'));
+        }
+
+        return $user;
     }
 
     /**
